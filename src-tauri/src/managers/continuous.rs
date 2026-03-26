@@ -272,10 +272,29 @@ impl ContinuousListeningManager {
                     // ── End wake word logic ──────────────────────────────────
 
                     // ── Voice command detection ──────────────────────────────
-                    // Check if the transcription is a voice command (e.g.
-                    // "open YouTube", "clear two words", "new tab") before
-                    // pasting.
-                    if let Some(cmd) = crate::voice_commands::detect_voice_command(&transcription) {
+                    // First try rule-based detection. If that finds nothing and
+                    // AI commands are enabled, fall back to MiniMax M2.7.
+                    let mut detected_cmd =
+                        crate::voice_commands::detect_voice_command(&transcription);
+
+                    if detected_cmd.is_none() {
+                        let ai_settings = get_settings(&app);
+                        if ai_settings.ai_commands_enabled
+                            && !ai_settings.ai_commands_api_key.is_empty()
+                        {
+                            debug!(
+                                "Continuous: rule-based command not matched; trying AI interpretation"
+                            );
+                            detected_cmd = crate::ai_commands::interpret_command(
+                                &ai_settings.ai_commands_api_key,
+                                &transcription,
+                            )
+                            .await;
+                        }
+                    }
+
+                    if let Some(cmd) = detected_cmd {
+                        info!("Continuous: executing voice command");
                         match &cmd {
                             crate::voice_commands::VoiceCommand::OpenUrl { site_name, url } => {
                                 info!(
@@ -286,11 +305,30 @@ impl ContinuousListeningManager {
                                     error!("Continuous: failed to open URL: {e}");
                                 }
                             }
+                            crate::voice_commands::VoiceCommand::AiOpenUrl { url } => {
+                                info!("Continuous: AI voice command — opening URL {}", url);
+                                if let Err(e) = crate::voice_commands::open_url_in_browser(url) {
+                                    error!("Continuous: failed to open AI-detected URL: {e}");
+                                }
+                            }
                             crate::voice_commands::VoiceCommand::SystemCommand { name } => {
                                 info!("Continuous: voice command — system command {}", name);
                                 if let Err(e) = crate::voice_commands::execute_system_command(name)
                                 {
                                     error!("Continuous: failed to execute system command: {e}");
+                                }
+                            }
+                            crate::voice_commands::VoiceCommand::AiSystemCommand { name } => {
+                                info!("Continuous: AI voice command — system command {}", name);
+                                if let Err(e) = crate::voice_commands::execute_system_command(name)
+                                {
+                                    error!("Continuous: failed to execute AI system command: {e}");
+                                }
+                            }
+                            crate::voice_commands::VoiceCommand::AiOpenApp { app_name } => {
+                                info!("Continuous: AI voice command — open app '{}'", app_name);
+                                if let Err(e) = crate::voice_commands::open_app_by_name(app_name) {
+                                    error!("Continuous: failed to open app '{}': {e}", app_name);
                                 }
                             }
                             _ => {

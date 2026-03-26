@@ -1130,3 +1130,23 @@ pub fn change_ort_accelerator_setting(
 pub fn get_available_accelerators() -> crate::managers::transcription::AvailableAccelerators {
     crate::managers::transcription::get_available_accelerators()
 }
+
+// ─── AI Commands settings ────────────────────────────────────────────────
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_ai_commands_enabled_setting(app: AppHandle, enabled: bool) -> Result<(), String> {
+    let mut s = settings::get_settings(&app);
+    s.ai_commands_enabled = enabled;
+    settings::write_settings(&app, s);
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn change_ai_commands_api_key_setting(app: AppHandle, api_key: String) -> Result<(), String> {
+    let mut s = settings::get_settings(&app);
+    s.ai_commands_api_key = api_key;
+    settings::write_settings(&app, s);
+    Ok(())
+}

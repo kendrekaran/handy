@@ -151,6 +151,10 @@ const settingUpdaters: {
     commands.changeOrtAcceleratorSetting(value as OrtAcceleratorSetting),
   extra_recording_buffer_ms: (value) =>
     commands.changeExtraRecordingBufferSetting(value as number),
+  ai_commands_enabled: (value) =>
+    commands.changeAiCommandsEnabledSetting(value as boolean),
+  ai_commands_api_key: (value) =>
+    commands.changeAiCommandsApiKeySetting(value as string),
 };
 
 export const useSettingsStore = create<SettingsStore>()(

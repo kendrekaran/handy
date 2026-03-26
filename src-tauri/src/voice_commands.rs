@@ -35,6 +35,12 @@ pub enum VoiceCommand {
     ClearWords { count: u32 },
     /// Execute a system-level command (e.g. mute/unmute system audio).
     SystemCommand { name: &'static str },
+    /// Open a URL detected by AI command interpreter (owns its URL string).
+    AiOpenUrl { url: String },
+    /// Execute a system command detected by AI (owns its name string).
+    AiSystemCommand { name: String },
+    /// Open a native desktop application by name, as detected by the AI.
+    AiOpenApp { app_name: String },
 }
 
 /// A keyboard combination to simulate.
@@ -956,6 +962,42 @@ pub fn open_url_in_browser(url: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Open a native desktop application by name.
+///
+/// On macOS uses `open -a <name>` which searches /Applications and Spotlight.
+/// On Windows uses `start <name>` via cmd.
+/// On Linux tries to spawn the app name directly (common CLI launchers).
+pub fn open_app_by_name(app_name: &str) -> Result<(), String> {
+    info!("Opening app: {}", app_name);
+
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open")
+            .args(["-a", app_name])
+            .spawn()
+            .map_err(|e| format!("Failed to open app '{}': {}", app_name, e))?;
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        Command::new("cmd")
+            .args(["/C", "start", "", app_name])
+            .spawn()
+            .map_err(|e| format!("Failed to open app '{}': {}", app_name, e))?;
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        // On Linux app names from the AI will typically match the binary name
+        // (e.g. "terminal", "firefox", "code"). Try spawning directly.
+        Command::new(app_name)
+            .spawn()
+            .map_err(|e| format!("Failed to open app '{}': {}", app_name, e))?;
+    }
+
+    Ok(())
+}
+
 /// Execute a system-level command by name.
 pub fn execute_system_command(name: &str) -> Result<(), String> {
     match name {
@@ -1155,6 +1197,13 @@ pub fn execute_keyboard_command(
             execute_system_command(name)?;
             Ok(true)
         }
+        VoiceCommand::AiOpenUrl { .. } => Ok(false),
+        VoiceCommand::AiSystemCommand { name } => {
+            info!("Executing AI system command: {}", name);
+            execute_system_command(name)?;
+            Ok(true)
+        }
+        VoiceCommand::AiOpenApp { .. } => Ok(false),
     }
 }
 

@@ -8,6 +8,7 @@ use tauri_plugin_store::StoreExt;
 
 pub const APPLE_INTELLIGENCE_PROVIDER_ID: &str = "apple_intelligence";
 pub const APPLE_INTELLIGENCE_DEFAULT_MODEL_ID: &str = "Apple Intelligence";
+pub const MINIMAX_PROVIDER_ID: &str = "minimax";
 
 #[derive(Serialize, Debug, Clone, Copy, PartialEq, Eq, Type)]
 #[serde(rename_all = "lowercase")]
@@ -401,6 +402,15 @@ pub struct AppSettings {
     pub extra_recording_buffer_ms: u64,
     #[serde(default)]
     pub continuous_listening: bool,
+    /// Enable AI-powered voice command interpretation via MiniMax.
+    /// When enabled, unrecognized voice commands are sent to MiniMax M2.7
+    /// to interpret natural language instructions (e.g., "open YouTube",
+    /// "make the window fullscreen", "play pause").
+    #[serde(default)]
+    pub ai_commands_enabled: bool,
+    /// API key for MiniMax AI commands (separate from post-processing keys).
+    #[serde(default)]
+    pub ai_commands_api_key: String,
 }
 
 fn default_model() -> String {
@@ -559,6 +569,16 @@ fn default_post_process_providers() -> Vec<PostProcessProvider> {
             supports_structured_output: true,
         });
     }
+
+    // MiniMax provider (Anthropic-compatible API)
+    providers.push(PostProcessProvider {
+        id: MINIMAX_PROVIDER_ID.to_string(),
+        label: "MiniMax".to_string(),
+        base_url: "https://api.minimax.io/anthropic".to_string(),
+        allow_base_url_edit: false,
+        models_endpoint: None,
+        supports_structured_output: false,
+    });
 
     // Custom provider always comes last
     providers.push(PostProcessProvider {
@@ -771,6 +791,8 @@ pub fn get_default_settings() -> AppSettings {
         ort_accelerator: OrtAcceleratorSetting::default(),
         extra_recording_buffer_ms: 0,
         continuous_listening: false,
+        ai_commands_enabled: false,
+        ai_commands_api_key: String::new(),
     }
 }
 

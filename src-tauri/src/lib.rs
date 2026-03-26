@@ -1,4 +1,5 @@
 mod actions;
+mod ai_commands;
 #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
 mod apple_intelligence;
 mod audio_feedback;
@@ -392,6 +393,8 @@ pub fn run(cli_args: CliArgs) {
             shortcut::change_whisper_accelerator_setting,
             shortcut::change_ort_accelerator_setting,
             shortcut::get_available_accelerators,
+            shortcut::change_ai_commands_enabled_setting,
+            shortcut::change_ai_commands_api_key_setting,
             shortcut::handy_keys::start_handy_keys_recording,
             shortcut::handy_keys::stop_handy_keys_recording,
             trigger_update_check,

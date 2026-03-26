@@ -13,6 +13,7 @@
     "models": "Models",
     "advanced": "Advanced",
     "postProcessing": "Post Process",
+    "aiCommands": "AI Commands",
     "history": "History",
     "debug": "Debug",
     "about": "About"
@@ -409,6 +410,26 @@
         "createFirst": "Click 'Create New Prompt' above to create your first post-processing prompt."
       }
     },
+    "aiCommands": {
+      "title": "AI Commands",
+      "api": {
+        "title": "MiniMax API",
+        "apiKey": {
+          "title": "API Key",
+          "description": "Your MiniMax API key for AI-powered voice command interpretation.",
+          "placeholder": "Enter your MiniMax API key"
+        },
+        "model": {
+          "title": "Model",
+          "description": "The AI model used for interpreting voice commands."
+        }
+      },
+      "info": {
+        "title": "How It Works",
+        "description": "When enabled, unrecognized voice commands are sent to MiniMax M2.7 to interpret natural language instructions. For example, saying \"open Netflix\" or \"make the window fullscreen\" will be understood and executed.",
+        "howItWorks": "Rule-based commands (like \"copy\", \"new tab\", \"open YouTube\") are still handled instantly without AI. The AI is only used as a fallback when the built-in command matching doesn't recognize the phrase."
+      }
+    },
     "history": {
       "title": "History",
       "openFolder": "Open Recordings Folder",
@@ -472,6 +493,10 @@
       "postProcessingToggle": {
         "label": "Post Processing",
         "description": "Enable AI-powered text refinement after transcription"
+      },
+      "aiCommandsToggle": {
+        "label": "AI Commands",
+        "description": "Enable AI-powered voice command interpretation using MiniMax"
       },
       "muteWhileRecording": {
         "label": "Mute While Recording",

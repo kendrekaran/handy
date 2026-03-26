@@ -549,9 +549,41 @@ impl ShortcutAction for TranscribeAction {
                             // Check if the transcription is a voice command
                             // (e.g. "open YouTube", "clear two words", "new tab")
                             // before pasting.
-                            if let Some(cmd) =
-                                crate::voice_commands::detect_voice_command(&transcription)
-                            {
+                            let mut detected_cmd =
+                                crate::voice_commands::detect_voice_command(&transcription);
+
+                            // ── AI command fallback ──────────────────────────
+                            // If rule-based detection found nothing and AI commands
+                            // are enabled, ask MiniMax M2.7 to interpret the text.
+                            if detected_cmd.is_none() {
+                                let ai_settings = get_settings(&ah);
+                                if ai_settings.ai_commands_enabled
+                                    && !ai_settings.ai_commands_api_key.is_empty()
+                                {
+                                    debug!(
+                                        "Rule-based voice command not matched; trying AI interpretation"
+                                    );
+                                    match crate::ai_commands::interpret_command(
+                                        &ai_settings.ai_commands_api_key,
+                                        &transcription,
+                                    )
+                                    .await
+                                    {
+                                        Some(cmd) => {
+                                            debug!("AI command interpreter matched a command");
+                                            detected_cmd = Some(cmd);
+                                        }
+                                        None => {
+                                            debug!(
+                                                "AI command interpreter: not a command, will paste as text"
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            // ── End AI command fallback ──────────────────────
+
+                            if let Some(cmd) = detected_cmd {
                                 let handled = match &cmd {
                                     crate::voice_commands::VoiceCommand::OpenUrl {
                                         site_name,
@@ -568,12 +600,41 @@ impl ShortcutAction for TranscribeAction {
                                         }
                                         true
                                     }
+                                    crate::voice_commands::VoiceCommand::AiOpenUrl { url } => {
+                                        debug!("AI voice command: opening URL {}", url);
+                                        if let Err(e) =
+                                            crate::voice_commands::open_url_in_browser(url)
+                                        {
+                                            error!("Failed to open AI-detected URL: {}", e);
+                                        }
+                                        true
+                                    }
                                     crate::voice_commands::VoiceCommand::SystemCommand { name } => {
                                         debug!("Voice command detected: system command {}", name);
                                         if let Err(e) =
                                             crate::voice_commands::execute_system_command(name)
                                         {
                                             error!("Failed to execute system command: {}", e);
+                                        }
+                                        true
+                                    }
+                                    crate::voice_commands::VoiceCommand::AiSystemCommand {
+                                        name,
+                                    } => {
+                                        debug!("AI voice command: system command {}", name);
+                                        if let Err(e) =
+                                            crate::voice_commands::execute_system_command(name)
+                                        {
+                                            error!("Failed to execute AI system command: {}", e);
+                                        }
+                                        true
+                                    }
+                                    crate::voice_commands::VoiceCommand::AiOpenApp { app_name } => {
+                                        debug!("AI voice command: open app '{}'", app_name);
+                                        if let Err(e) =
+                                            crate::voice_commands::open_app_by_name(app_name)
+                                        {
+                                            error!("Failed to open app '{}': {}", app_name, e);
                                         }
                                         true
                                     }
