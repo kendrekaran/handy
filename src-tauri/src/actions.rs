@@ -545,6 +545,94 @@ impl ShortcutAction for TranscribeAction {
                                 transcription
                             );
 
+                            // ── Voice command detection ──────────────────────
+                            // Check if the transcription is a voice command
+                            // (e.g. "open YouTube", "clear two words", "new tab")
+                            // before pasting.
+                            if let Some(cmd) =
+                                crate::voice_commands::detect_voice_command(&transcription)
+                            {
+                                let handled = match &cmd {
+                                    crate::voice_commands::VoiceCommand::OpenUrl {
+                                        site_name,
+                                        url,
+                                    } => {
+                                        debug!(
+                                            "Voice command detected: opening {} ({})",
+                                            site_name, url
+                                        );
+                                        if let Err(e) =
+                                            crate::voice_commands::open_url_in_browser(url)
+                                        {
+                                            error!("Failed to open URL: {}", e);
+                                        }
+                                        true
+                                    }
+                                    crate::voice_commands::VoiceCommand::SystemCommand { name } => {
+                                        debug!("Voice command detected: system command {}", name);
+                                        if let Err(e) =
+                                            crate::voice_commands::execute_system_command(name)
+                                        {
+                                            error!("Failed to execute system command: {}", e);
+                                        }
+                                        true
+                                    }
+                                    _ => {
+                                        // Keyboard commands — run on main thread with enigo
+                                        let ah_cmd = ah.clone();
+                                        ah.run_on_main_thread(move || {
+                                            if let Some(enigo_state) =
+                                                ah_cmd.try_state::<crate::input::EnigoState>()
+                                            {
+                                                let mut enigo = enigo_state.0.lock().unwrap();
+                                                if let Err(e) =
+                                                    crate::voice_commands::execute_keyboard_command(
+                                                        &mut enigo, &cmd,
+                                                    )
+                                                {
+                                                    error!(
+                                                        "Failed to execute voice command: {}",
+                                                        e
+                                                    );
+                                                }
+                                            } else {
+                                                error!(
+                                                    "EnigoState not available for voice command"
+                                                );
+                                            }
+                                        })
+                                        .unwrap_or_else(
+                                            |e| {
+                                                error!(
+                                                "Failed to run voice command on main thread: {:?}",
+                                                e
+                                            );
+                                            },
+                                        );
+                                        true
+                                    }
+                                };
+
+                                if handled {
+                                    // Save to history even for voice commands
+                                    if wav_saved {
+                                        if let Err(err) = hm.save_entry(
+                                            file_name,
+                                            transcription,
+                                            post_process,
+                                            None,
+                                            None,
+                                        ) {
+                                            error!("Failed to save history entry: {}", err);
+                                        }
+                                    }
+                                    utils::hide_recording_overlay(&ah);
+                                    change_tray_icon(&ah, TrayIconState::Idle);
+                                    return;
+                                }
+                            }
+                            // ── End voice command detection ──────────────────
+
                             if post_process {
                                 show_processing_overlay(&ah);
                             }

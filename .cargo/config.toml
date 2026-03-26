@@ -1,1 +1,6 @@
 [build]
+
+[env]
+# Disable -mcpu=native in whisper.cpp/GGML CMake build — the Command Line Tools
+# clang does not support 'native' as an argument to -mcpu= on arm64 targets.
+GGML_NATIVE = "OFF"

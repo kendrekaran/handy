@@ -6,6 +6,7 @@ pub mod audio_toolkit;
 pub mod cli;
 mod clipboard;
 mod commands;
+mod commands_helper;
 mod helpers;
 mod input;
 mod llm_client;
@@ -19,6 +20,7 @@ mod transcription_coordinator;
 mod tray;
 mod tray_i18n;
 mod utils;
+mod voice_commands;
 
 pub use cli::CliArgs;
 #[cfg(debug_assertions)]
@@ -27,6 +29,7 @@ use tauri_specta::{collect_commands, collect_events, Builder};
 
 use env_filter::Builder as EnvFilterBuilder;
 use managers::audio::AudioRecordingManager;
+use managers::continuous::ContinuousListeningManager;
 use managers::history::HistoryManager;
 use managers::model::ModelManager;
 use managers::transcription::TranscriptionManager;
@@ -165,6 +168,23 @@ fn initialize_core_logic(app_handle: &AppHandle) {
     app_handle.manage(transcription_manager.clone());
     app_handle.manage(history_manager.clone());
 
+    // Initialize and conditionally start the continuous listening manager.
+    // It requires TranscriptionManager to already be in managed state (above).
+    let continuous_manager = Arc::new(ContinuousListeningManager::new(app_handle));
+    app_handle.manage(continuous_manager.clone());
+    {
+        let settings = settings::get_settings(app_handle);
+        if settings.continuous_listening {
+            // Kick off in a background thread to avoid blocking startup.
+            let cm = continuous_manager.clone();
+            std::thread::spawn(move || {
+                if let Err(e) = cm.start() {
+                    log::error!("Failed to start continuous listening: {e}");
+                }
+            });
+        }
+    }
+
     // Note: Shortcuts are NOT initialized here.
     // The frontend is responsible for calling the `initialize_shortcuts` command
     // after permissions are confirmed (on macOS) or after onboarding completes.
@@ -216,6 +236,9 @@ fn initialize_core_logic(app_handle: &AppHandle) {
             }
             "copy_last_transcript" => {
                 tray::copy_last_transcript(app);
+            }
+            "voice_commands" => {
+                commands_helper::toggle_commands_helper(app);
             }
             "unload_model" => {
                 let transcription_manager = app.state::<Arc<TranscriptionManager>>();
@@ -385,6 +408,7 @@ pub fn run(cli_args: CliArgs) {
             commands::check_apple_intelligence_available,
             commands::initialize_enigo,
             commands::initialize_shortcuts,
+            commands::toggle_commands_helper,
             commands::models::get_available_models,
             commands::models::get_model_info,
             commands::models::download_model,
@@ -411,6 +435,8 @@ pub fn run(cli_args: CliArgs) {
             commands::audio::set_clamshell_microphone,
             commands::audio::get_clamshell_microphone,
             commands::audio::is_recording,
+            commands::continuous::set_continuous_listening,
+            commands::continuous::get_continuous_listening_status,
             commands::transcription::set_model_unload_timeout,
             commands::transcription::get_model_load_status,
             commands::transcription::unload_model_manually,

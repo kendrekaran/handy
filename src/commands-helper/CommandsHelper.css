@@ -1,0 +1,137 @@
+.commands-helper {
+  width: 280px;
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+  background: rgba(20, 20, 24, 0.95);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.commands-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: grab;
+  -webkit-app-region: drag;
+}
+
+.commands-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+}
+
+.commands-body {
+  overflow-y: auto;
+  flex: 1;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.commands-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.commands-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.commands-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 2px;
+}
+
+.command-category {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.command-category:last-child {
+  border-bottom: none;
+}
+
+.category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.category-header:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.category-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.65);
+  letter-spacing: 0.2px;
+}
+
+.category-chevron {
+  color: rgba(255, 255, 255, 0.35);
+  transition: transform 200ms ease;
+  display: flex;
+  align-items: center;
+}
+
+.category-chevron.expanded {
+  transform: rotate(180deg);
+}
+
+.category-commands {
+  padding: 0 10px 6px;
+  animation: slideDown 150ms ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.command-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background-color 100ms ease;
+}
+
+.command-row:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.command-voice {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(250, 162, 202, 0.9);
+  flex-shrink: 0;
+}
+
+.command-desc {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  text-align: right;
+  margin-left: 8px;
+}

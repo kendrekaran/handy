@@ -22,6 +22,11 @@ use crate::audio_toolkit::{
 enum Cmd {
     Start,
     Stop(mpsc::Sender<Vec<f32>>),
+    /// Begin continuous (always-on) VAD-triggered capture.  When a complete
+    /// utterance is detected the `speech_end_cb` is invoked with the samples.
+    StartContinuous,
+    /// Exit continuous mode (does not stop the underlying mic stream).
+    StopContinuous,
     Shutdown,
 }
 
@@ -36,6 +41,9 @@ pub struct AudioRecorder {
     worker_handle: Option<std::thread::JoinHandle<()>>,
     vad: Option<Arc<Mutex<Box<dyn vad::VoiceActivityDetector>>>>,
     level_cb: Option<Arc<dyn Fn(Vec<f32>) + Send + Sync + 'static>>,
+    /// Called by the consumer thread whenever a complete utterance has been
+    /// detected in continuous mode (speech onset → hangover expiry).
+    speech_end_cb: Option<Arc<dyn Fn(Vec<f32>) + Send + Sync + 'static>>,
 }
 
 impl AudioRecorder {
@@ -46,6 +54,7 @@ impl AudioRecorder {
             worker_handle: None,
             vad: None,
             level_cb: None,
+            speech_end_cb: None,
         })
     }
 
@@ -59,6 +68,17 @@ impl AudioRecorder {
         F: Fn(Vec<f32>) + Send + Sync + 'static,
     {
         self.level_cb = Some(Arc::new(cb));
+        self
+    }
+
+    /// Register a callback invoked in continuous listening mode whenever a
+    /// complete utterance ends.  Receives the VAD-filtered speech samples at
+    /// 16 kHz (ready for Whisper).
+    pub fn with_speech_end_callback<F>(mut self, cb: F) -> Self
+    where
+        F: Fn(Vec<f32>) + Send + Sync + 'static,
+    {
+        self.speech_end_cb = Some(Arc::new(cb));
         self
     }
 
@@ -83,6 +103,7 @@ impl AudioRecorder {
         let vad = self.vad.clone();
         // Move the optional level callback into the worker thread
         let level_cb = self.level_cb.clone();
+        let speech_end_cb = self.speech_end_cb.clone();
 
         let worker = std::thread::spawn(move || {
             let stop_flag = Arc::new(AtomicBool::new(false));
@@ -159,7 +180,15 @@ impl AudioRecorder {
                 Ok((stream, sample_rate)) => {
                     let _ = init_tx.send(Ok(()));
                     // Keep the stream alive while we process samples.
-                    run_consumer(sample_rate, vad, sample_rx, cmd_rx, level_cb, stop_flag);
+                    run_consumer(
+                        sample_rate,
+                        vad,
+                        sample_rx,
+                        cmd_rx,
+                        level_cb,
+                        speech_end_cb,
+                        stop_flag,
+                    );
                     drop(stream);
                 }
                 Err(error_message) => {
@@ -208,6 +237,24 @@ impl AudioRecorder {
             tx.send(Cmd::Stop(resp_tx))?;
         }
         Ok(resp_rx.recv()?) // wait for the samples
+    }
+
+    /// Begin continuous (always-on) VAD listening.  Each complete utterance
+    /// will be delivered to the `speech_end_cb` registered via
+    /// `with_speech_end_callback`.
+    pub fn start_continuous(&self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(tx) = &self.cmd_tx {
+            tx.send(Cmd::StartContinuous)?;
+        }
+        Ok(())
+    }
+
+    /// Stop continuous listening without closing the mic stream.
+    pub fn stop_continuous(&self) -> Result<(), Box<dyn std::error::Error>> {
+        if let Some(tx) = &self.cmd_tx {
+            tx.send(Cmd::StopContinuous)?;
+        }
+        Ok(())
     }
 
     pub fn close(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -373,6 +420,7 @@ fn run_consumer(
     sample_rx: mpsc::Receiver<AudioChunk>,
     cmd_rx: mpsc::Receiver<Cmd>,
     level_cb: Option<Arc<dyn Fn(Vec<f32>) + Send + Sync + 'static>>,
+    speech_end_cb: Option<Arc<dyn Fn(Vec<f32>) + Send + Sync + 'static>>,
     stop_flag: Arc<AtomicBool>,
 ) {
     let mut frame_resampler = FrameResampler::new(
@@ -383,6 +431,13 @@ fn run_consumer(
 
     let mut processed_samples = Vec::<f32>::new();
     let mut recording = false;
+    // In continuous mode the consumer runs VAD autonomously; each
+    // complete utterance triggers `speech_end_cb`.
+    let mut continuous = false;
+    // Track whether we were inside a speech segment in continuous mode.
+    let mut continuous_in_speech = false;
+    // Buffer that accumulates the current utterance in continuous mode.
+    let mut continuous_samples = Vec::<f32>::new();
 
     // ---------- spectrum visualisation setup ---------------------------- //
     const BUCKETS: usize = 16;
@@ -434,10 +489,51 @@ fn run_consumer(
             }
         }
 
-        // ---------- existing pipeline ------------------------------------ //
-        frame_resampler.push(&raw, &mut |frame: &[f32]| {
-            handle_frame(frame, recording, &vad, &mut processed_samples)
-        });
+        // ---------- continuous VAD pipeline ------------------------------ //
+        if continuous {
+            if let Some(vad_arc) = &vad {
+                frame_resampler.push(&raw, &mut |frame: &[f32]| {
+                    // Run the VAD and immediately collect owned data so the
+                    // mutex guard can be dropped before we mutate other locals.
+                    enum OwnedFrame {
+                        Speech(Vec<f32>),
+                        Noise,
+                    }
+                    let owned = {
+                        let mut det = vad_arc.lock().unwrap();
+                        match det.push_frame(frame) {
+                            Ok(VadFrame::Speech(buf)) => OwnedFrame::Speech(buf.to_vec()),
+                            Ok(VadFrame::Noise) => OwnedFrame::Noise,
+                            // On error treat as speech to avoid losing audio.
+                            Err(_) => OwnedFrame::Speech(frame.to_vec()),
+                        }
+                    };
+                    match owned {
+                        OwnedFrame::Speech(buf) => {
+                            continuous_in_speech = true;
+                            continuous_samples.extend_from_slice(&buf);
+                        }
+                        OwnedFrame::Noise => {
+                            if continuous_in_speech && !continuous_samples.is_empty() {
+                                // Speech segment just ended — fire the callback.
+                                continuous_in_speech = false;
+                                let utterance = std::mem::take(&mut continuous_samples);
+                                if let Some(cb) = &speech_end_cb {
+                                    cb(utterance);
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        // ---------- existing manual-recording pipeline -------------------- //
+        if !continuous {
+            frame_resampler.push(&raw, &mut |frame: &[f32]| {
+                handle_frame(frame, recording, &vad, &mut processed_samples)
+            });
+        }
 
         // non-blocking check for a command
         while let Ok(cmd) = cmd_rx.try_recv() {
@@ -483,6 +579,21 @@ fn run_consumer(
                     // Resume the audio callback so the consumer loop can continue
                     // receiving chunks (important for always-on microphone mode).
                     stop_flag.store(false, Ordering::Relaxed);
+                }
+                Cmd::StartContinuous => {
+                    continuous = true;
+                    continuous_in_speech = false;
+                    continuous_samples.clear();
+                    if let Some(v) = &vad {
+                        v.lock().unwrap().reset();
+                    }
+                    log::info!("Continuous listening started");
+                }
+                Cmd::StopContinuous => {
+                    continuous = false;
+                    continuous_in_speech = false;
+                    continuous_samples.clear();
+                    log::info!("Continuous listening stopped");
                 }
                 Cmd::Shutdown => {
                     stop_flag.store(true, Ordering::Relaxed);

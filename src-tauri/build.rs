@@ -141,9 +141,15 @@ fn build_apple_intelligence_bridge() {
     .to_string();
 
     // Check if the SDK supports FoundationModels (required for Apple Intelligence)
+    // We require the arm64-apple-macos swiftinterface, which is only present in full
+    // Xcode (not Command Line Tools). The CLT SDK only ships arm64e interfaces and
+    // lacks the FoundationModelsMacros compiler plugin needed by @Generable.
     let framework_path =
         Path::new(&sdk_path).join("System/Library/Frameworks/FoundationModels.framework");
-    let has_foundation_models = framework_path.exists();
+    let swiftinterface_path = framework_path
+        .join("Versions/A/Modules/FoundationModels.swiftmodule")
+        .join("arm64-apple-macos.swiftinterface");
+    let has_foundation_models = framework_path.exists() && swiftinterface_path.exists();
 
     let source_file = if has_foundation_models {
         println!("cargo:warning=Building with Apple Intelligence support.");

@@ -1,4 +1,5 @@
 pub mod audio;
+pub mod continuous;
 pub mod history;
 pub mod models;
 pub mod transcription;
@@ -119,6 +120,13 @@ pub fn check_apple_intelligence_available() -> bool {
     {
         false
     }
+}
+
+/// Toggle the voice commands helper overlay window.
+#[specta::specta]
+#[tauri::command]
+pub fn toggle_commands_helper(app: AppHandle) {
+    crate::commands_helper::toggle_commands_helper(&app);
 }
 
 /// Try to initialize Enigo (keyboard/mouse simulation).

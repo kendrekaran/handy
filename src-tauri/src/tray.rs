@@ -190,23 +190,30 @@ pub fn update_tray_menu(app: &AppHandle, state: &TrayIconState, locale: Option<&
             )
             .expect("failed to create menu")
         }
-        TrayIconState::Idle => Menu::with_items(
-            app,
-            &[
-                &version_i,
-                &separator(),
-                &copy_last_transcript_i,
-                &separator(),
-                &model_submenu,
-                &unload_model_i,
-                &separator(),
-                &settings_i,
-                &check_updates_i,
-                &separator(),
-                &quit_i,
-            ],
-        )
-        .expect("failed to create menu"),
+        TrayIconState::Idle => {
+            let voice_commands_i =
+                MenuItem::with_id(app, "voice_commands", "Voice Commands", true, None::<&str>)
+                    .expect("failed to create voice commands item");
+
+            Menu::with_items(
+                app,
+                &[
+                    &version_i,
+                    &separator(),
+                    &copy_last_transcript_i,
+                    &voice_commands_i,
+                    &separator(),
+                    &model_submenu,
+                    &unload_model_i,
+                    &separator(),
+                    &settings_i,
+                    &check_updates_i,
+                    &separator(),
+                    &quit_i,
+                ],
+            )
+            .expect("failed to create menu")
+        }
     };
 
     let tray = app.state::<TrayIcon>();
